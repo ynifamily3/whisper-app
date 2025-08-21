@@ -193,27 +193,33 @@ function stopSubtitleSync() {
 async function initializeTranslator() {
   try {
     // Check if Translation API is available
-    if (!('ai' in window) || !('translator' in window.ai)) {
+    if (!('Translator' in self)) {
       throw new Error('Translation API not available');
     }
 
-    const canTranslate = await window.ai.translator.canTranslate({
+    const availability = await Translator.availability({
       sourceLanguage: document.getElementById("sourceLanguage").value,
       targetLanguage: document.getElementById("targetLanguage").value
     });
 
-    if (canTranslate !== 'no') {
-      if (canTranslate === 'readily') {
-        translator = await window.ai.translator.create({
+    if (availability !== 'no') {
+      if (availability === 'readily') {
+        translator = await Translator.create({
           sourceLanguage: document.getElementById("sourceLanguage").value,
           targetLanguage: document.getElementById("targetLanguage").value
         });
       } else {
         // Need to download the model
         showStatus("번역 모델 다운로드 중...", "info");
-        translator = await window.ai.translator.create({
+        translator = await Translator.create({
           sourceLanguage: document.getElementById("sourceLanguage").value,
-          targetLanguage: document.getElementById("targetLanguage").value
+          targetLanguage: document.getElementById("targetLanguage").value,
+          monitor(m) {
+            m.addEventListener('downloadprogress', (e) => {
+              const progress = Math.round((e.loaded || 0) * 100);
+              showStatus(`번역 모델 다운로드 중... ${progress}%`, "info");
+            });
+          }
         });
         await translator.ready;
       }
@@ -224,7 +230,7 @@ async function initializeTranslator() {
     }
   } catch (error) {
     console.error("Translation API error:", error);
-    showStatus("번역 기능이 지원되지 않는 브라우저입니다. Chrome 최신 버전을 사용하세요.", "error");
+    showStatus("번역 기능이 지원되지 않는 브라우저입니다. Chrome 138+ 버전이 필요합니다.", "error");
     return false;
   }
 }
