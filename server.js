@@ -44,9 +44,36 @@ app.get("/api/cache/stats", (_, res) => {
   });
 });
 
-// POST /api/transcribe { url, lang?, model? }
+// Server-Sent Events for progress tracking
+const activeProcesses = new Map();
+
+app.get("/api/progress/:processId", (req, res) => {
+  const processId = req.params.processId;
+  
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  activeProcesses.set(processId, res);
+  
+  req.on('close', () => {
+    activeProcesses.delete(processId);
+  });
+});
+
+function sendProgress(processId, step, progress, message) {
+  const res = activeProcesses.get(processId);
+  if (res) {
+    res.write(`data: ${JSON.stringify({ step, progress, message })}\n\n`);
+  }
+}
+
+// POST /api/transcribe { url, lang?, model?, processId? }
 app.post("/api/transcribe", async (req, res) => {
-  const { url, lang = "auto", model = "small" } = req.body || {};
+  const { url, lang = "auto", model = "small", processId } = req.body || {};
   
   // URL 검증 강화
   if (!url || typeof url !== 'string') {
@@ -88,6 +115,7 @@ app.post("/api/transcribe", async (req, res) => {
   
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     console.log(`[${new Date().toISOString()}] 캐시 히트: ${url}`);
+    if (processId) sendProgress(processId, 'completed', 100, '캐시에서 불러왔습니다!');
     activeRequests--;
     return res.json({ ok: true, ...cached.data, cached: true });
   }
@@ -97,6 +125,7 @@ app.post("/api/transcribe", async (req, res) => {
 
   try {
     console.log(`[${new Date().toISOString()}] 처리 시작: ${url}, 모델: ${model}, 언어: ${lang}`);
+    if (processId) sendProgress(processId, 'downloading', 20, '영상 다운로드 중...');
     
     // 1) yt-dlp: extract audio as MP3
     const ytdlpArgs = [
@@ -104,8 +133,7 @@ app.post("/api/transcribe", async (req, res) => {
       "--audio-format", "mp3",
       url,
       "-o", "audio.%(ext)s", // produces audio.mp3
-      "--max-filesize", "100M", // 파일 크기 제한
-      "--max-duration", "3600" // 1시간 제한
+      "--max-filesize", "100M" // 파일 크기 제한
     ];
     console.log(`[${new Date().toISOString()}] yt-dlp 시작`);
     await runCmd("yt-dlp", ytdlpArgs, { cwd: work });
@@ -115,6 +143,7 @@ app.post("/api/transcribe", async (req, res) => {
     }
     
     console.log(`[${new Date().toISOString()}] 오디오 추출 완료: ${fs.statSync(audioPath).size} bytes`);
+    if (processId) sendProgress(processId, 'transcribing', 60, '음성을 텍스트로 변환 중...');
 
     // 2) python faster-whisper
     const pyArgs = [path.join(process.cwd(), "transcribe.py"), audioPath, model, lang];
@@ -127,6 +156,7 @@ app.post("/api/transcribe", async (req, res) => {
     }
     
     console.log(`[${new Date().toISOString()}] 전사 완료: ${out.segments?.length || 0} 세그먼트`);
+    if (processId) sendProgress(processId, 'generating', 90, '자막 생성 중...');
 
     // 캐시에 저장
     transcriptCache.set(cacheKey, {
@@ -138,6 +168,7 @@ app.post("/api/transcribe", async (req, res) => {
     // 3) cleanup temp dir
     safeRm(work);
 
+    if (processId) sendProgress(processId, 'completed', 100, '완료!');
     res.json({ ok: true, ...out, cached: false });
   } catch (err) {
     console.error(`[${new Date().toISOString()}] 처리 오류:`, err);

@@ -5,78 +5,444 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>YouTube → Whisper</title>
     <style>
-      body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; margin:0; padding:24px;}
-      .row{display:grid; grid-template-columns: 2fr 1fr; gap:24px;}
-      .card{border:1px solid #ddd; border-radius:12px; padding:16px;}
-      .seg{padding:6px 8px; border-radius:8px; cursor:pointer;}
-      .seg:hover{background:#f5f5f5}
-      .time{font-variant-numeric: tabular-nums; color:#666; margin-right:8px}
-      .controls{display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;}
-      input, select, button{padding:10px 12px; border-radius:10px; border:1px solid #ccc}
-      button{cursor:pointer}
-      #status{font-size:14px; color:#555}
-      #player{width:100%; aspect-ratio:16/9}
-      .progress-info{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
-      .progress-bar{width:100%; height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden;}
-      #progressFill{height:100%; background:linear-gradient(90deg, #4ade80, #22c55e); width:0%; transition:width 0.3s ease;}
-      #cancelBtn{background:#ef4444; color:white; border:none; padding:6px 12px; font-size:12px;}
-      #cancelBtn:hover{background:#dc2626;}
-      button:disabled{background:#ccc; cursor:not-allowed;}
-      .error{color:#ef4444; background:#fef2f2; padding:12px; border-radius:8px; border:1px solid #fecaca;}
-      .success{color:#16a34a; background:#f0fdf4; padding:12px; border-radius:8px; border:1px solid #bbf7d0;}
-      .info{color:#2563eb; background:#eff6ff; padding:12px; border-radius:8px; border:1px solid #bfdbfe;}
-      .cache-badge{background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:8px;}
-      @media (max-width: 900px){ .row{grid-template-columns: 1fr;} }
+      :root {
+        --primary-color: #6366f1;
+        --primary-hover: #5b21b6;
+        --secondary-color: #8b5cf6;
+        --success-color: #10b981;
+        --error-color: #ef4444;
+        --warning-color: #f59e0b;
+        --info-color: #3b82f6;
+        --neutral-100: #f8fafc;
+        --neutral-200: #e2e8f0;
+        --neutral-300: #cbd5e1;
+        --neutral-400: #94a3b8;
+        --neutral-500: #64748b;
+        --neutral-600: #475569;
+        --neutral-700: #334155;
+        --neutral-800: #1e293b;
+        --neutral-900: #0f172a;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      }
+      
+      * { box-sizing: border-box; }
+      
+      body {
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        margin: 0;
+        padding: 32px;
+        padding-bottom: 80px; /* Add padding for sticky subtitle */
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: var(--neutral-800);
+        line-height: 1.6;
+      }
+      
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      
+      h1 {
+        text-align: center;
+        color: white;
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        letter-spacing: -0.025em;
+      }
+      
+      .subtitle {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 1.25rem;
+        margin-bottom: 3rem;
+        font-weight: 300;
+      }
+      
+      .row {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 32px;
+        margin-top: 32px;
+      }
+      
+      .card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: var(--shadow-xl);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+      
+      .form-group {
+        margin-bottom: 24px;
+      }
+      
+      label {
+        display: block;
+        font-weight: 600;
+        color: var(--neutral-700);
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      
+      input[type="text"], select {
+        width: 100%;
+        padding: 16px 20px;
+        border: 2px solid var(--neutral-200);
+        border-radius: 12px;
+        font-size: 16px;
+        transition: all 0.2s ease;
+        background: white;
+        color: var(--neutral-800);
+      }
+      
+      input[type="text"]:focus, select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        transform: translateY(-1px);
+      }
+      
+      .controls {
+        display: flex;
+        gap: 16px;
+        margin-top: 24px;
+        flex-wrap: wrap;
+        align-items: end;
+      }
+      
+      .control-group {
+        flex: 1;
+        min-width: 150px;
+      }
+      
+      button {
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        color: white;
+        border: none;
+        padding: 16px 32px;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        box-shadow: var(--shadow-md);
+      }
+      
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+        background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary-color) 100%);
+      }
+      
+      button:active {
+        transform: translateY(0);
+      }
+      
+      button:disabled {
+        background: var(--neutral-300);
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      
+      #status {
+        font-size: 16px;
+        font-weight: 500;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin: 24px 0;
+        text-align: center;
+        transition: all 0.3s ease;
+      }
+      
+      .error {
+        color: var(--error-color);
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+      
+      .success {
+        color: var(--success-color);
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+      
+      .info {
+        color: var(--info-color);
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+      }
+      
+      #progressContainer {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        padding: 24px;
+        margin: 24px 0;
+        box-shadow: var(--shadow-lg);
+      }
+      
+      .progress-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      
+      #progressText {
+        font-weight: 600;
+        color: var(--neutral-700);
+      }
+      
+      .progress-bar {
+        width: 100%;
+        height: 12px;
+        background: var(--neutral-200);
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      
+      #progressFill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        width: 0%;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 6px;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      #progressFill::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+        animation: shimmer 2s infinite;
+      }
+      
+      @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+      
+      #cancelBtn {
+        background: var(--error-color);
+        padding: 8px 16px;
+        font-size: 14px;
+        border-radius: 8px;
+      }
+      
+      #cancelBtn:hover {
+        background: #dc2626;
+      }
+      
+      #player {
+        width: 100%;
+        aspect-ratio: 16/9;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: var(--shadow-lg);
+      }
+      
+      .transcript-container {
+        max-height: 500px;
+        overflow-y: auto;
+        padding: 8px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--primary-color) var(--neutral-200);
+      }
+      
+      .transcript-container::-webkit-scrollbar {
+        width: 8px;
+      }
+      
+      .transcript-container::-webkit-scrollbar-track {
+        background: var(--neutral-200);
+        border-radius: 4px;
+      }
+      
+      .transcript-container::-webkit-scrollbar-thumb {
+        background: var(--primary-color);
+        border-radius: 4px;
+      }
+      
+      .seg {
+        padding: 12px 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        margin: 8px 0;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+      }
+      
+      .seg:hover {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: var(--primary-color);
+        transform: translateX(4px);
+      }
+      
+      .time {
+        font-variant-numeric: tabular-nums;
+        color: var(--primary-color);
+        font-weight: 600;
+        margin-right: 12px;
+        font-size: 14px;
+      }
+      
+      h3 {
+        color: var(--neutral-800);
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      
+      @media (max-width: 900px) {
+        body { padding: 20px; }
+        h1 { font-size: 2rem; }
+        .subtitle { font-size: 1rem; margin-bottom: 2rem; }
+        .row { grid-template-columns: 1fr; gap: 20px; }
+        .card { padding: 20px; }
+        .controls { flex-direction: column; }
+        .control-group { min-width: 100%; }
+      }
+      
+      .sticky-subtitle {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(10px);
+        color: white;
+        padding: 16px 20px;
+        text-align: center;
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 1.4;
+        z-index: 1000;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        margin-bottom: 0;
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .sticky-subtitle span {
+        max-width: 1200px;
+        display: block;
+      }
+
+      @media (max-width: 600px) {
+        body { padding: 16px; }
+        h1 { font-size: 1.75rem; }
+        .card { padding: 16px; }
+        button { padding: 14px 24px; font-size: 14px; }
+        input[type="text"], select { padding: 14px 16px; }
+        
+        .sticky-subtitle {
+          font-size: 16px;
+          padding: 12px 16px;
+          min-height: 50px;
+        }
+      }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://www.youtube.com/iframe_api"></script>
   </head>
   <body>
-    <h1>YouTube 자막 생성기</h1>
-    <p id="status">유튜브 URL을 입력하고 "자막 생성" 버튼을 클릭하세요.</p>
-    
-    <div id="progressContainer" style="display: none;" class="card">
-      <div class="progress-info">
-        <span id="progressText">처리 중...</span>
-        <button id="cancelBtn" type="button">취소</button>
+    <div class="container">
+      <h1>YouTube 자막 생성기</h1>
+      <p class="subtitle">AI 기반 자동 음성 인식으로 유튜브 영상의 자막을 생성하세요</p>
+      
+      <p id="status">유튜브 URL을 입력하고 "자막 생성" 버튼을 클릭하세요.</p>
+      
+      <div id="progressContainer" style="display: none;">
+        <div class="progress-info">
+          <span id="progressText">처리 중...</span>
+          <button id="cancelBtn" type="button">취소</button>
+        </div>
+        <div class="progress-bar">
+          <div id="progressFill"></div>
+        </div>
       </div>
-      <div class="progress-bar">
-        <div id="progressFill"></div>
+
+      <div class="card">
+        <div class="form-group">
+          <label>영상 URL</label>
+          <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=... (최대 1시간)" />
+        </div>
+        
+        <div class="controls">
+          <div class="control-group">
+            <label>모델</label>
+            <select id="model">
+              <option value="tiny">빠름 (정확도 낮음)</option>
+              <option value="base">보통 (기본)</option>
+              <option value="small" selected>권장 (균형)</option>
+              <option value="medium">정확 (느림)</option>
+              <option value="large-v2">최고 (매우 느림)</option>
+            </select>
+          </div>
+          
+          <div class="control-group">
+            <label>언어</label>
+            <select id="lang">
+              <option value="auto" selected>자동 감지</option>
+              <option value="ko">한국어</option>
+              <option value="en">영어</option>
+              <option value="ja">일본어</option>
+              <option value="zh">중국어</option>
+            </select>
+          </div>
+          
+          <button id="go">자막 생성</button>
+          <button id="downloadSrt" disabled>자막 파일 다운로드</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="card">
+          <div id="player"></div>
+        </div>
+        <div class="card">
+          <h3>자막</h3>
+          <div class="transcript-container">
+            <div id="transcript"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <label>영상 URL</label>
-      <input id="url" placeholder="https://www.youtube.com/watch?v=... (최대 1시간)" style="width:100%" />
-      <div class="controls">
-        <label>모델</label>
-        <select id="model">
-          <option value="tiny">빠름 (정확도 낮음)</option>
-          <option value="base">보통 (기본)</option>
-          <option value="small" selected>권장 (균형)</option>
-          <option value="medium">정확 (느림)</option>
-          <option value="large-v2">최고 (매우 느림)</option>
-        </select>
-        <label>언어</label>
-        <select id="lang">
-          <option value="auto" selected>자동 감지</option>
-          <option value="ko">한국어</option>
-          <option value="en">영어</option>
-          <option value="ja">일본어</option>
-          <option value="zh">중국어</option>
-        </select>
-        <button id="go">자막 생성</button>
-        <button id="downloadSrt" disabled>자막 파일 다운로드</button>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:24px;">
-      <div class="card">
-        <div id="player"></div>
-      </div>
-      <div class="card">
-        <h3>자막</h3>
-        <div id="transcript"></div>
-      </div>
+    <!-- Sticky subtitle container -->
+    <div id="stickySubtitle" class="sticky-subtitle" style="display: none;">
+      <span id="currentSubtitleText"></span>
     </div>
 
     <script src="/app.js" type="module"></script>
