@@ -1,7 +1,10 @@
 let player;
 let currentRequest = null;
 let transcriptSegments = [];
+let translatedSegments = new Map();
 let subtitleUpdateInterval = null;
+let translator = null;
+let translationEnabled = false;
 
 window.onYouTubeIframeAPIReady = () => {
   /* created after submit */
@@ -113,6 +116,9 @@ function renderTranscript(data) {
   
   // Start subtitle synchronization
   startSubtitleSync();
+  
+  // Show translation controls
+  translationControls.style.display = "block";
 }
 
 function fmt(sec) {
@@ -128,7 +134,7 @@ function fmt(sec) {
   return `${h}:${m}:${s}`;
 }
 
-function updateStickySubtitle() {
+async function updateStickySubtitle() {
   if (!player || !player.getCurrentTime) return;
   
   const currentTime = player.getCurrentTime();
@@ -136,12 +142,28 @@ function updateStickySubtitle() {
   const subtitleText = document.getElementById("currentSubtitleText");
   
   // Find the current subtitle segment
-  const currentSegment = transcriptSegments.find(segment => 
+  const currentSegmentIndex = transcriptSegments.findIndex(segment => 
     currentTime >= segment.start && currentTime <= segment.end
   );
   
-  if (currentSegment) {
-    subtitleText.textContent = currentSegment.text;
+  if (currentSegmentIndex !== -1) {
+    const currentSegment = transcriptSegments[currentSegmentIndex];
+    
+    if (translationEnabled && translator) {
+      // Show both original and translated text
+      const translatedText = await translateSegment(currentSegment.text, currentSegmentIndex);
+      
+      subtitleText.innerHTML = `
+        <div class="subtitle-dual">
+          <span class="subtitle-original">${currentSegment.text}</span>
+          <span class="subtitle-translated">${translatedText}</span>
+        </div>
+      `;
+    } else {
+      // Show only original text
+      subtitleText.textContent = currentSegment.text;
+    }
+    
     stickySubtitle.style.display = "flex";
   } else {
     stickySubtitle.style.display = "none";
@@ -167,6 +189,83 @@ function stopSubtitleSync() {
   stickySubtitle.style.display = "none";
 }
 
+// Chrome Translator API functions
+async function initializeTranslator() {
+  try {
+    // Check if Translation API is available
+    if (!('ai' in window) || !('translator' in window.ai)) {
+      throw new Error('Translation API not available');
+    }
+
+    const canTranslate = await window.ai.translator.canTranslate({
+      sourceLanguage: document.getElementById("sourceLanguage").value,
+      targetLanguage: document.getElementById("targetLanguage").value
+    });
+
+    if (canTranslate !== 'no') {
+      if (canTranslate === 'readily') {
+        translator = await window.ai.translator.create({
+          sourceLanguage: document.getElementById("sourceLanguage").value,
+          targetLanguage: document.getElementById("targetLanguage").value
+        });
+      } else {
+        // Need to download the model
+        showStatus("번역 모델 다운로드 중...", "info");
+        translator = await window.ai.translator.create({
+          sourceLanguage: document.getElementById("sourceLanguage").value,
+          targetLanguage: document.getElementById("targetLanguage").value
+        });
+        await translator.ready;
+      }
+      return true;
+    } else {
+      showStatus("선택한 언어 조합은 번역을 지원하지 않습니다.", "error");
+      return false;
+    }
+  } catch (error) {
+    console.error("Translation API error:", error);
+    showStatus("번역 기능이 지원되지 않는 브라우저입니다. Chrome 최신 버전을 사용하세요.", "error");
+    return false;
+  }
+}
+
+async function translateSegment(text, segmentId) {
+  if (!translator || !text.trim()) return text;
+  
+  try {
+    // Check cache first
+    if (translatedSegments.has(segmentId)) {
+      return translatedSegments.get(segmentId);
+    }
+    
+    const translated = await translator.translate(text);
+    translatedSegments.set(segmentId, translated);
+    return translated;
+  } catch (error) {
+    console.error("Translation error:", error);
+    return text;
+  }
+}
+
+async function translateAllSegments() {
+  if (!translator || !transcriptSegments.length) return;
+  
+  showStatus("자막 번역 중...", "info");
+  
+  for (let i = 0; i < transcriptSegments.length; i++) {
+    const segment = transcriptSegments[i];
+    await translateSegment(segment.text, i);
+    
+    // Update progress
+    if (i % 5 === 0 || i === transcriptSegments.length - 1) {
+      const progress = ((i + 1) / transcriptSegments.length) * 100;
+      showStatus(`자막 번역 중... ${Math.round(progress)}%`, "info");
+    }
+  }
+  
+  showStatus("자막 번역 완료!", "success");
+}
+
 const go = document.getElementById("go");
 const urlEl = document.getElementById("url");
 const modelEl = document.getElementById("model");
@@ -176,6 +275,12 @@ const progressContainer = document.getElementById("progressContainer");
 const progressText = document.getElementById("progressText");
 const progressFill = document.getElementById("progressFill");
 const cancelBtn = document.getElementById("cancelBtn");
+
+// Translation elements
+const toggleTranslationBtn = document.getElementById("toggleTranslation");
+const translationControls = document.getElementById("translationControls");
+const sourceLanguageEl = document.getElementById("sourceLanguage");
+const targetLanguageEl = document.getElementById("targetLanguage");
 
 function showProgress() {
   progressContainer.style.display = "block";
@@ -220,6 +325,67 @@ cancelBtn.addEventListener("click", () => {
   }
 });
 
+// Translation toggle functionality
+toggleTranslationBtn.addEventListener("click", async () => {
+  if (!translationEnabled) {
+    // Enable translation
+    toggleTranslationBtn.disabled = true;
+    toggleTranslationBtn.textContent = "번역 준비 중...";
+    
+    const success = await initializeTranslator();
+    if (success) {
+      translationEnabled = true;
+      toggleTranslationBtn.textContent = "번역 끄기";
+      toggleTranslationBtn.classList.add("active");
+      
+      // Pre-translate all segments for better performance
+      await translateAllSegments();
+    } else {
+      toggleTranslationBtn.textContent = "번역 켜기";
+    }
+    toggleTranslationBtn.disabled = false;
+  } else {
+    // Disable translation
+    translationEnabled = false;
+    toggleTranslationBtn.textContent = "번역 켜기";
+    toggleTranslationBtn.classList.remove("active");
+    
+    // Clean up translator
+    if (translator) {
+      translator.destroy?.();
+      translator = null;
+    }
+    translatedSegments.clear();
+  }
+});
+
+// Language change handlers
+sourceLanguageEl.addEventListener("change", () => {
+  if (translationEnabled) {
+    translationEnabled = false;
+    toggleTranslationBtn.textContent = "번역 켜기";
+    toggleTranslationBtn.classList.remove("active");
+    if (translator) {
+      translator.destroy?.();
+      translator = null;
+    }
+    translatedSegments.clear();
+  }
+});
+
+targetLanguageEl.addEventListener("change", () => {
+  if (translationEnabled) {
+    translationEnabled = false;
+    toggleTranslationBtn.textContent = "번역 켜기";
+    toggleTranslationBtn.classList.remove("active");
+    if (translator) {
+      translator.destroy?.();
+      translator = null;
+    }
+    translatedSegments.clear();
+  }
+});
+
 go.addEventListener("click", async () => {
   const inputUrl = urlEl.value.trim();
   const vid = getVideoId(inputUrl);
@@ -240,8 +406,19 @@ go.addEventListener("click", async () => {
   updateProgress("starting", 10);
   showStatus("처리를 시작합니다...", "info");
   
-  // Stop any existing subtitle sync
+  // Stop any existing subtitle sync and reset translation
   stopSubtitleSync();
+  translationControls.style.display = "none";
+  if (translationEnabled) {
+    translationEnabled = false;
+    toggleTranslationBtn.textContent = "번역 켜기";
+    toggleTranslationBtn.classList.remove("active");
+    if (translator) {
+      translator.destroy?.();
+      translator = null;
+    }
+    translatedSegments.clear();
+  }
 
   await ensurePlayer(vid);
 
