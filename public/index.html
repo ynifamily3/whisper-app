@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YouTube → Whisper</title>
+    <style>
+      body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; margin:0; padding:24px;}
+      .row{display:grid; grid-template-columns: 2fr 1fr; gap:24px;}
+      .card{border:1px solid #ddd; border-radius:12px; padding:16px;}
+      .seg{padding:6px 8px; border-radius:8px; cursor:pointer;}
+      .seg:hover{background:#f5f5f5}
+      .time{font-variant-numeric: tabular-nums; color:#666; margin-right:8px}
+      .controls{display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;}
+      input, select, button{padding:10px 12px; border-radius:10px; border:1px solid #ccc}
+      button{cursor:pointer}
+      #status{font-size:14px; color:#555}
+      #player{width:100%; aspect-ratio:16/9}
+      .progress-info{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+      .progress-bar{width:100%; height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden;}
+      #progressFill{height:100%; background:linear-gradient(90deg, #4ade80, #22c55e); width:0%; transition:width 0.3s ease;}
+      #cancelBtn{background:#ef4444; color:white; border:none; padding:6px 12px; font-size:12px;}
+      #cancelBtn:hover{background:#dc2626;}
+      button:disabled{background:#ccc; cursor:not-allowed;}
+      .error{color:#ef4444; background:#fef2f2; padding:12px; border-radius:8px; border:1px solid #fecaca;}
+      .success{color:#16a34a; background:#f0fdf4; padding:12px; border-radius:8px; border:1px solid #bbf7d0;}
+      .info{color:#2563eb; background:#eff6ff; padding:12px; border-radius:8px; border:1px solid #bfdbfe;}
+      .cache-badge{background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:8px;}
+      @media (max-width: 900px){ .row{grid-template-columns: 1fr;} }
+    </style>
+    <script src="https://www.youtube.com/iframe_api"></script>
+  </head>
+  <body>
+    <h1>YouTube 자막 생성기</h1>
+    <p id="status">유튜브 URL을 입력하고 "자막 생성" 버튼을 클릭하세요.</p>
+    
+    <div id="progressContainer" style="display: none;" class="card">
+      <div class="progress-info">
+        <span id="progressText">처리 중...</span>
+        <button id="cancelBtn" type="button">취소</button>
+      </div>
+      <div class="progress-bar">
+        <div id="progressFill"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>영상 URL</label>
+      <input id="url" placeholder="https://www.youtube.com/watch?v=... (최대 1시간)" style="width:100%" />
+      <div class="controls">
+        <label>모델</label>
+        <select id="model">
+          <option value="tiny">빠름 (정확도 낮음)</option>
+          <option value="base">보통 (기본)</option>
+          <option value="small" selected>권장 (균형)</option>
+          <option value="medium">정확 (느림)</option>
+          <option value="large-v2">최고 (매우 느림)</option>
+        </select>
+        <label>언어</label>
+        <select id="lang">
+          <option value="auto" selected>자동 감지</option>
+          <option value="ko">한국어</option>
+          <option value="en">영어</option>
+          <option value="ja">일본어</option>
+          <option value="zh">중국어</option>
+        </select>
+        <button id="go">자막 생성</button>
+        <button id="downloadSrt" disabled>자막 파일 다운로드</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:24px;">
+      <div class="card">
+        <div id="player"></div>
+      </div>
+      <div class="card">
+        <h3>자막</h3>
+        <div id="transcript"></div>
+      </div>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
